@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+boto3
+pydantic
+python-dotenv
+openai        # optional: only needed if you want AI-written explanations

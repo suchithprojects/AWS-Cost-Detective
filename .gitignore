@@ -1,0 +1,18 @@
+# Secrets
+.env
+files/.claude/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Personal / non-project files (not part of the AWS Cost Detective codebase)
+/Suchith_Jain_Resume_*.pdf
+/SUCHITH_JAIN_*.pdf
+/linkedin_cover.png
+/files.zip
+/hello.sh
+/newfile.txt
+/session.md

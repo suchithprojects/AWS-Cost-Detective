@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AWS Cost Detective</title>
+
+<!--
+  This is the whole frontend in ONE file. No build step, no npm.
+  How it works, in plain English:
+    1. When the page opens, it tries to call your backend at
+       http://127.0.0.1:8000/scan and get a real report.
+    2. If the backend isn't running, it quietly shows built-in SAMPLE data
+       so the page always looks good (handy for screenshots / demos).
+    3. It draws a big "recoverable" total that counts up, then one card
+       per problem, each with a Copy button for the fix command.
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  /* ---- Design tokens (all colors + fonts live here) ------------------ */
+  :root{
+    --paper:#EAEEF2;      /* cool audit-paper canvas */
+    --card:#FFFFFF;
+    --ink:#0F1720;        /* near-black slate for text */
+    --muted:#5B6672;
+    --faint:#8A94A0;
+    --line:#DEE5EC;
+    --accent:#0E6E8C;     /* teal brand accent */
+    --accent-ink:#0A5064;
+    --accent-soft:#E1EDF1;
+    --risk-low:#2F7D5B;   /* green  */
+    --risk-low-bg:#E6F2EC;
+    --risk-med:#9C6A16;   /* amber  */
+    --risk-med-bg:#F6EEDD;
+    --risk-high:#B23A3A;  /* red    */
+    --risk-high-bg:#F6E4E4;
+    --code-bg:#0F1720;
+    --code-ink:#CFD8E1;
+    --code-accent:#6FC2D8;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(15,23,32,.04), 0 8px 24px rgba(15,23,32,.06);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Inter",system-ui,sans-serif;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .wrap{max-width:920px;margin:0 auto;padding:28px 20px 72px;}
+
+  /* ---- Top bar ------------------------------------------------------- */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding-bottom:22px;flex-wrap:wrap;
+  }
+  .brand{display:flex;align-items:center;gap:11px;}
+  .brand .glass{
+    width:34px;height:34px;flex:none;color:var(--accent);
+  }
+  .brand h1{
+    font-family:"Space Grotesk",sans-serif;
+    font-size:19px;font-weight:600;letter-spacing:-.01em;margin:0;
+  }
+  .brand span{display:block;font-size:12px;color:var(--muted);font-weight:400;}
+
+  .controls{display:flex;align-items:center;gap:10px;}
+  .field{position:relative;}
+  .field label{
+    position:absolute;top:-8px;left:10px;background:var(--paper);
+    padding:0 5px;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--faint);font-family:"IBM Plex Mono",monospace;
+  }
+  select{
+    appearance:none;font-family:"IBM Plex Mono",monospace;font-size:13px;
+    color:var(--ink);background:var(--card);border:1px solid var(--line);
+    border-radius:10px;padding:9px 30px 9px 12px;cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235B6672' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 10px center;
+  }
+  button.rescan{
+    font-family:"Inter",sans-serif;font-size:13px;font-weight:600;
+    color:#fff;background:var(--accent);border:none;border-radius:10px;
+    padding:10px 16px;cursor:pointer;display:flex;align-items:center;gap:7px;
+    transition:background .15s ease;
+  }
+  button.rescan:hover{background:var(--accent-ink);}
+  button.rescan svg{width:15px;height:15px;}
+  button.rescan.spin svg{animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ---- Hero "verdict" ------------------------------------------------ */
+  .verdict{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:30px 30px 24px;position:relative;overflow:hidden;
+  }
+  .eyebrow{
+    font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--accent);margin:0 0 14px;
+    display:flex;align-items:center;gap:9px;
+  }
+  .eyebrow::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent);}
+  .total{
+    font-family:"Space Grotesk",sans-serif;font-weight:700;
+    font-size:clamp(46px,11vw,78px);line-height:.95;letter-spacing:-.03em;
+    margin:0;font-variant-numeric:tabular-nums;
+  }
+  .total .cents{color:var(--faint);}
+  .total-label{
+    font-size:15px;color:var(--muted);margin:10px 0 0;
+  }
+  .meta{
+    display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:22px;
+    padding-top:20px;border-top:1px solid var(--line);
+    font-size:13px;color:var(--muted);
+  }
+  .meta b{color:var(--ink);font-weight:600;}
+  .chips{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;}
+  .chip{
+    font-family:"IBM Plex Mono",monospace;font-size:12px;
+    background:var(--accent-soft);color:var(--accent-ink);
+    padding:5px 10px;border-radius:7px;white-space:nowrap;
+  }
+
+  .sample-note{
+    display:none;margin:14px 0 0;font-size:12.5px;color:var(--muted);
+    background:var(--risk-med-bg);border:1px solid #EAD9B6;
+    padding:9px 13px;border-radius:9px;
+  }
+  .sample-note.show{display:block;}
+  .sample-note code{font-family:"IBM Plex Mono",monospace;color:var(--ink);}
+
+  /* ---- Findings ------------------------------------------------------ */
+  .section-head{
+    display:flex;align-items:baseline;gap:10px;margin:34px 2px 14px;
+  }
+  .section-head h2{
+    font-family:"Space Grotesk",sans-serif;font-size:15px;font-weight:600;margin:0;
+  }
+  .section-head .count{
+    font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--faint);
+  }
+
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden;
+    display:flex;
+    opacity:0;transform:translateY(8px);
+    animation:rise .5s ease forwards;
+  }
+  @keyframes rise{to{opacity:1;transform:none;}}
+  .rail{width:5px;flex:none;}
+  .rail.low{background:var(--risk-low);}
+  .rail.medium{background:var(--risk-med);}
+  .rail.high{background:var(--risk-high);}
+  .card-body{padding:18px 20px;flex:1;min-width:0;}
+
+  .card-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .rtype{
+    display:flex;align-items:center;gap:7px;
+    font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;
+    color:var(--ink);background:#F2F5F8;border:1px solid var(--line);
+    padding:4px 9px;border-radius:7px;
+  }
+  .rtype svg{width:14px;height:14px;color:var(--muted);}
+  .rid{
+    font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--muted);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .badge{
+    font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+    padding:4px 9px;border-radius:20px;
+  }
+  .badge.low{color:var(--risk-low);background:var(--risk-low-bg);}
+  .badge.medium{color:var(--risk-med);background:var(--risk-med-bg);}
+  .badge.high{color:var(--risk-high);background:var(--risk-high-bg);}
+  .save{
+    margin-left:auto;font-family:"Space Grotesk",sans-serif;font-weight:600;
+    font-size:17px;white-space:nowrap;font-variant-numeric:tabular-nums;
+  }
+  .save small{font-family:"Inter";font-weight:500;font-size:12px;color:var(--muted);}
+
+  .explain{margin:13px 0 0;font-size:14px;color:#333d47;}
+
+  .fix{
+    margin-top:15px;background:var(--code-bg);border-radius:10px;
+    display:flex;align-items:stretch;overflow:hidden;
+  }
+  .fix .cmd{
+    flex:1;min-width:0;padding:12px 14px;color:var(--code-ink);
+    font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.5;
+    overflow-x:auto;white-space:pre;
+  }
+  .fix .cmd::-webkit-scrollbar{height:6px;}
+  .fix .cmd::-webkit-scrollbar-thumb{background:#2a3644;border-radius:3px;}
+  .fix .label{
+    color:var(--code-accent);font-size:10px;letter-spacing:.08em;
+    text-transform:uppercase;display:block;margin-bottom:5px;
+  }
+  .copy{
+    flex:none;border:none;border-left:1px solid #23303d;background:transparent;
+    color:var(--code-ink);font-family:"Inter";font-size:12px;font-weight:600;
+    padding:0 16px;cursor:pointer;display:flex;align-items:center;gap:6px;
+    transition:background .15s ease,color .15s ease;
+  }
+  .copy:hover{background:#1a2531;color:#fff;}
+  .copy.done{color:var(--code-accent);}
+  .copy svg{width:14px;height:14px;}
+
+  .footer{
+    margin-top:34px;text-align:center;font-size:12px;color:var(--faint);
+    font-family:"IBM Plex Mono",monospace;
+  }
+
+  /* ---- Loading / empty ---------------------------------------------- */
+  .state{
+    text-align:center;padding:70px 20px;color:var(--muted);
+  }
+  .state .spinner{
+    width:26px;height:26px;border:3px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;margin:0 auto 16px;animation:spin .8s linear infinite;
+  }
+
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px;}
+
+  @media (max-width:560px){
+    .save{margin-left:0;width:100%;}
+    .verdict{padding:24px 20px 20px;}
+    .chips{margin-left:0;width:100%;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <svg class="glass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        <line x1="11" y1="8" x2="11" y2="14"></line><line x1="8.5" y1="11" x2="13.5" y2="11"></line>
+      </svg>
+      <div>
+        <h1>AWS Cost Detective</h1>
+        <span>Finds wasted spend in your AWS account</span>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="field">
+        <label for="region">Region</label>
+        <select id="region">
+          <option value="us-east-1">us-east-1</option>
+          <option value="us-west-2">us-west-2</option>
+          <option value="eu-west-1">eu-west-1</option>
+          <option value="ap-south-1">ap-south-1</option>
+        </select>
+      </div>
+      <button class="rescan" id="rescan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+        </svg>
+        Run scan
+      </button>
+    </div>
+  </div>
+
+  <!-- Everything below is drawn by JavaScript -->
+  <div id="app">
+    <div class="state"><div class="spinner"></div>Scanning your account…</div>
+  </div>
+
+  <div class="footer">Dollar amounts are estimates · not affiliated with AWS</div>
+</div>
+
+<script>
+/* =====================================================================
+   1. SAMPLE DATA  — shown when the backend isn't running.
+      It matches the same shape the backend's /scan returns, so the
+      drawing code below works exactly the same either way.
+   ===================================================================== */
+const SAMPLE_REPORT = {
+  region: "us-east-1",
+  total_monthly_savings_usd: 207.15,
+  number_of_issues: 5,
+  items: [
+    { finding:{resource_id:"i-0aa11bb22cc33dd44",resource_type:"EC2",issue_type:"over_provisioned"},
+      fix:{risk_level:"medium",monthly_savings_usd:121.47,
+        explanation:"This server (t3.2xlarge) used only 3.1% of its CPU on average — far bigger than it needs to be. Shrinking it keeps everything running but lowers the bill; it needs a short restart, so do it during a quiet time.",
+        cli_command:"aws ec2 stop-instances --instance-ids i-0aa11bb22cc33dd44 --region us-east-1 && aws ec2 modify-instance-attribute --instance-id i-0aa11bb22cc33dd44 --instance-type t3.xlarge --region us-east-1 && aws ec2 start-instances --instance-ids i-0aa11bb22cc33dd44 --region us-east-1"}},
+    { finding:{resource_id:"i-0ee55ff66gg77hh88",resource_type:"EC2",issue_type:"over_provisioned"},
+      fix:{risk_level:"medium",monthly_savings_usd:70.08,
+        explanation:"This server (m5.xlarge) used only 6.4% of its CPU on average. A m5.large would handle this easily and cost less. Needs a short restart.",
+        cli_command:"aws ec2 stop-instances --instance-ids i-0ee55ff66gg77hh88 --region us-east-1 && aws ec2 modify-instance-attribute --instance-id i-0ee55ff66gg77hh88 --instance-type m5.large --region us-east-1 && aws ec2 start-instances --instance-ids i-0ee55ff66gg77hh88 --region us-east-1"}},
+    { finding:{resource_id:"vol-0xx99yy88zz77ww66",resource_type:"EBS",issue_type:"unattached"},
+      fix:{risk_level:"medium",monthly_savings_usd:8.00,
+        explanation:"This 100 GB disk is not attached to any server, so you are paying for storage nobody uses. Take a quick snapshot (a backup) first, then delete it.",
+        cli_command:"aws ec2 create-snapshot --volume-id vol-0xx99yy88zz77ww66 --region us-east-1 && aws ec2 delete-volume --volume-id vol-0xx99yy88zz77ww66 --region us-east-1"}},
+    { finding:{resource_id:"vol-0aa11bb22cc33dd44",resource_type:"EBS",issue_type:"gp2_volume"},
+      fix:{risk_level:"low",monthly_savings_usd:4.00,
+        explanation:"This 200 GB disk uses the older 'gp2' type. Switching to 'gp3' is faster and about 20% cheaper, with no downtime — easy and safe.",
+        cli_command:"aws ec2 modify-volume --volume-id vol-0aa11bb22cc33dd44 --volume-type gp3 --region us-east-1"}},
+    { finding:{resource_id:"eipalloc-0aa11bb22cc33dd44",resource_type:"EIP",issue_type:"unattached"},
+      fix:{risk_level:"low",monthly_savings_usd:3.60,
+        explanation:"This public IP address is reserved but not connected to anything, and AWS charges for idle reserved IPs. Release it if you don't need this exact address.",
+        cli_command:"aws ec2 release-address --allocation-id eipalloc-0aa11bb22cc33dd44 --region us-east-1"}}
+  ]
+};
+
+/* =====================================================================
+   2. SMALL HELPERS
+   ===================================================================== */
+const app = document.getElementById("app");
+const regionSelect = document.getElementById("region");
+const rescanBtn = document.getElementById("rescan");
+
+// Little inline icons for each resource type.
+const ICONS = {
+  EC2: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="7" rx="1.5"/><rect x="2" y="13" width="20" height="7" rx="1.5"/><line x1="6" y1="7.5" x2="6" y2="7.5"/><line x1="6" y1="16.5" x2="6" y2="16.5"/></svg>',
+  EBS: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>',
+  EIP: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>'
+};
+
+const money = n => "$" + n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+
+function copyIcon(){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';}
+
+/* =====================================================================
+   3. DRAW THE REPORT ON THE PAGE
+   ===================================================================== */
+function render(report, usingSample){
+  // Count how many of each resource type, for the little chips.
+  const counts = {};
+  report.items.forEach(it => {
+    const t = it.finding.resource_type;
+    counts[t] = (counts[t]||0) + 1;
+  });
+  const chips = Object.entries(counts)
+    .map(([t,c]) => `<span class="chip">${t} · ${c}</span>`).join("");
+
+  // Split the total into dollars + cents so we can grey out the cents.
+  const total = report.total_monthly_savings_usd;
+  const dollars = Math.floor(total).toLocaleString("en-US");
+  const cents = (total % 1).toFixed(2).slice(1); // ".15"
+
+  const cards = report.items.map((it,i) => {
+    const risk = it.fix.risk_level;                 // low / medium / high
+    const type = it.finding.resource_type;
+    return `
+      <div class="card" style="animation-delay:${i*70}ms">
+        <div class="rail ${risk}"></div>
+        <div class="card-body">
+          <div class="card-top">
+            <span class="rtype">${ICONS[type]||""}${type}</span>
+            <span class="rid">${it.finding.resource_id}</span>
+            <span class="badge ${risk}">${risk} risk</span>
+            <span class="save">${money(it.fix.monthly_savings_usd)}<small> /mo</small></span>
+          </div>
+          <p class="explain">${it.fix.explanation}</p>
+          <div class="fix">
+            <div class="cmd"><span class="label">Recommended fix</span>${it.fix.cli_command}</div>
+            <button class="copy" data-cmd="${encodeURIComponent(it.fix.cli_command)}">
+              ${copyIcon()}Copy
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+
+  app.innerHTML = `
+    <div class="verdict">
+      <p class="eyebrow">Investigation complete</p>
+      <p class="total"><span id="tally">$0</span></p>
+      <p class="total-label">recoverable every month</p>
+      <div class="meta">
+        <span><b>${report.number_of_issues}</b> issues found</span>
+        <span>region <b>${report.region}</b></span>
+        <span>scanned <b>just now</b></span>
+        <div class="chips">${chips}</div>
+      </div>
+      <div class="sample-note ${usingSample?"show":""}">
+        Showing <b>sample data</b> — your backend wasn't reachable. Start it with
+        <code>uvicorn main:app --reload</code> and press <b>Run scan</b> for live results.
+      </div>
+    </div>
+
+    <div class="section-head">
+      <h2>Findings</h2>
+      <span class="count">${report.items.length} items · biggest savings first</span>
+    </div>
+    ${cards}`;
+
+  // Make the big number count up (feels like a total being tallied).
+  animateTally(document.getElementById("tally"), total, dollars, cents);
+
+  // Wire up every Copy button.
+  document.querySelectorAll(".copy").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const text = decodeURIComponent(btn.dataset.cmd);
+      navigator.clipboard.writeText(text).then(() => {
+        btn.classList.add("done");
+        btn.innerHTML = copyIcon() + "Copied";
+        setTimeout(() => { btn.classList.remove("done"); btn.innerHTML = copyIcon()+"Copy"; }, 1600);
+      });
+    });
+  });
+}
+
+function animateTally(el, target, dollars, cents){
+  const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
+  if(reduce){ el.innerHTML = "$"+dollars+'<span class="cents">'+cents+'</span>'; return; }
+  const duration = 900, start = performance.now();
+  function frame(now){
+    const p = Math.min((now-start)/duration, 1);
+    const eased = 1-Math.pow(1-p,3);          // ease-out
+    const val = target*eased;
+    const d = Math.floor(val).toLocaleString("en-US");
+    const c = (val%1).toFixed(2).slice(1);
+    el.innerHTML = "$"+d+'<span class="cents">'+c+'</span>';
+    if(p<1) requestAnimationFrame(frame);
+    else el.innerHTML = "$"+dollars+'<span class="cents">'+cents+'</span>';
+  }
+  requestAnimationFrame(frame);
+}
+
+/* =====================================================================
+   4. GET THE DATA  — try the real backend, fall back to sample.
+   ===================================================================== */
+const BACKEND = "http://127.0.0.1:8000";
+
+async function loadReport(region){
+  app.innerHTML = `<div class="state"><div class="spinner"></div>Scanning ${region}…</div>`;
+  rescanBtn.classList.add("spin");
+  try{
+    const res = await fetch(`${BACKEND}/scan?region=${region}`, {cache:"no-store"});
+    if(!res.ok) throw new Error("bad response");
+    const report = await res.json();
+    render(report, false);
+  }catch(e){
+    // Backend not running (or page opened as a file) — show sample data.
+    const sample = structuredClone(SAMPLE_REPORT);
+    sample.region = region;
+    render(sample, true);
+  }finally{
+    rescanBtn.classList.remove("spin");
+  }
+}
+
+/* =====================================================================
+   5. WIRE UP THE BUTTONS + FIRST LOAD
+   ===================================================================== */
+rescanBtn.addEventListener("click", () => loadReport(regionSelect.value));
+regionSelect.addEventListener("change", () => loadReport(regionSelect.value));
+loadReport(regionSelect.value);
+</script>
+</body>
+</html>

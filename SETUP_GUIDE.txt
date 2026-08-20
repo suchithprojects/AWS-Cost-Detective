@@ -1,0 +1,97 @@
+====================================================================
+  AWS COST DETECTIVE — SETUP GUIDE
+====================================================================
+
+
+--------------------------------------------------------------------
+  YOUR LAPTOP (run every time you want to use the tool)
+--------------------------------------------------------------------
+
+STEP 1 — Start the backend server (keep this terminal open):
+
+    cd ~/aws-cost-detective/files
+    uvicorn main:app --reload
+
+STEP 2 — Open the frontend in your browser:
+
+    ~/aws-cost-detective/frontend/index.html
+
+STEP 3 — To scan a client's account:
+
+    1. Paste their Role ARN into the "Role ARN" field
+    2. Select the AWS region
+    3. Click "Run scan"
+
+NOTE: If you close the terminal running uvicorn, the tool will stop
+      fetching real data and fall back to sample data. Just restart
+      uvicorn to fix it.
+
+YOUR ACCOUNT ID: <your-aws-account-id>
+
+
+--------------------------------------------------------------------
+  CLIENT INSTRUCTIONS (send this to your client)
+--------------------------------------------------------------------
+
+To allow AWS Cost Detective to scan your account, please follow
+these steps. This gives READ-ONLY access — the tool can never
+modify or delete anything in your account.
+
+
+OPTION A — AWS Console (no technical knowledge needed)
+------------------------------------------------------
+
+1. Log in to https://console.aws.amazon.com
+2. Go to IAM → Roles → Create role
+3. Select "AWS account" → "Another AWS account"
+4. Enter Account ID: <your-aws-account-id>
+5. Click Next
+6. Search and attach these two policies:
+      - AmazonEC2ReadOnlyAccess
+      - CloudWatchReadOnlyAccess
+7. Click Next
+8. Name the role: CostDetectiveReadOnly
+9. Click "Create role"
+10. Open the role you just created
+11. Copy the "ARN" at the top (looks like below) and share it with us:
+      arn:aws:iam::<your-account-id>:role/CostDetectiveReadOnly
+
+
+OPTION B — AWS CLI (for technical users)
+-----------------------------------------
+
+Run these 3 commands in your terminal:
+
+    aws iam create-role \
+      --role-name CostDetectiveReadOnly \
+      --assume-role-policy-document '{
+        "Version": "2012-10-17",
+        "Statement": [{
+          "Effect": "Allow",
+          "Principal": {"AWS": "arn:aws:iam::<your-aws-account-id>:root"},
+          "Action": "sts:AssumeRole"
+        }]
+      }'
+
+    aws iam attach-role-policy \
+      --role-name CostDetectiveReadOnly \
+      --policy-arn arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+
+    aws iam attach-role-policy \
+      --role-name CostDetectiveReadOnly \
+      --policy-arn arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess
+
+Then share this ARN with us:
+    arn:aws:iam::<your-account-id>:role/CostDetectiveReadOnly
+
+
+--------------------------------------------------------------------
+  WHAT THE TOOL CHECKS
+--------------------------------------------------------------------
+
+  - EC2 instances that are oversized (low CPU usage)
+  - EBS volumes that are unattached (paying for unused storage)
+  - EBS volumes on old gp2 type (gp3 is cheaper and faster)
+  - Elastic IPs that are reserved but not connected to anything
+
+====================================================================
