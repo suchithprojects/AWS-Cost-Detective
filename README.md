@@ -45,6 +45,8 @@ files/          FastAPI backend
   .env.example    config template (AWS keys, USE_MOCK_DATA flag, etc.)
 frontend/        simple HTML frontend to trigger scans and view results
 index.html       landing/demo page
+Dockerfile       builds files/ + frontend/ into one runnable image
+.dockerignore    keeps secrets (.env) and non-runtime files out of the image
 SETUP_GUIDE.txt  day-to-day run instructions + client onboarding steps
 ```
 
@@ -73,6 +75,19 @@ Then open `frontend/index.html` in a browser. It uses mock data until you set
 - `http://127.0.0.1:8000/scan?region=us-east-1` → JSON report
 - `http://127.0.0.1:8000/docs` → interactive API docs (FastAPI's built-in Swagger UI)
 
+## Run it with Docker
+
+No local Python install needed:
+
+```bash
+docker build -t aws-cost-detective .
+docker run -p 8000:8000 -e USE_MOCK_DATA=true aws-cost-detective
+```
+
+Same URLs as above. Credentials for a real scan are passed at run time via
+`-e`, never baked into the image — see `.dockerignore`, which keeps `.env`
+out of the build context entirely.
+
 ## Scanning a real account
 
 This tool only ever reads AWS data — it has no write permissions anywhere in its design.
@@ -83,7 +98,7 @@ write access is ever requested. See `SETUP_GUIDE.txt` for the exact steps.
 
 ## Tech stack
 
-Python · FastAPI · boto3 · Pydantic · OpenAI API (optional) · HTML/JS frontend
+Python · FastAPI · boto3 · Pydantic · Docker · OpenAI API (optional) · HTML/JS frontend
 
 ## Ideas for growth
 

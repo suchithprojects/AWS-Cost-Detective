@@ -87,7 +87,7 @@ savings. Take a screenshot — that's your first portfolio image. 📸
 ## Run the real web server
 
 ```bash
-cd backend
+cd files
 pip install -r requirements.txt
 cp .env.example .env          # then open .env and set your options
 uvicorn main:app --reload
@@ -100,6 +100,32 @@ Now open these in your browser:
   you this for free)
 
 It still uses fake data until you flip `USE_MOCK_DATA=false` in `.env`.
+
+---
+
+## Run it with Docker
+
+No local Python setup needed — the `Dockerfile` lives at the repo root
+(one level up from here) because the app serves `frontend/index.html`
+as a sibling of `files/`, so both need to be in the build context.
+
+```bash
+cd ..                                    # repo root, next to Dockerfile
+docker build -t aws-cost-detective .
+docker run -p 8000:8000 -e USE_MOCK_DATA=true aws-cost-detective
+```
+
+Same URLs as above. To scan a real account instead of mock data, pass
+your read-only keys at run time — never bake them into the image:
+
+```bash
+docker run -p 8000:8000 \
+  -e USE_MOCK_DATA=false \
+  -e AWS_ACCESS_KEY_ID=... \
+  -e AWS_SECRET_ACCESS_KEY=... \
+  -e AWS_DEFAULT_REGION=us-east-1 \
+  aws-cost-detective
+```
 
 ---
 

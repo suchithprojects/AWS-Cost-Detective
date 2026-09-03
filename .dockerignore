@@ -1,0 +1,24 @@
+# Secrets — never bake these into an image; pass at `docker run` time instead
+files/.env
+files/.claude/
+
+# Python
+**/__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Docs/binaries not needed at runtime
+files/*.pdf
+*.pdf
+files.zip
+
+# Personal / non-project files
+linkedin_cover.png
+hello.sh
+newfile.txt
+session.md
+
+# VCS / editor
+.git/
+.gitignore
