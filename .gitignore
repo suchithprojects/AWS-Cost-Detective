@@ -9,10 +9,12 @@ __pycache__/
 venv/
 
 # Personal / non-project files (not part of the AWS Cost Detective codebase)
-/Suchith_Jain_Resume_*.pdf
+/Suchith_Jain_Resume*.pdf
 /SUCHITH_JAIN_*.pdf
 /linkedin_cover.png
 /files.zip
 /hello.sh
 /newfile.txt
 /session.md
+/resume_source.html
+/next_session_checklist_source.html
